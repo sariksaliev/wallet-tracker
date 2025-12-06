@@ -1,3 +1,4 @@
+# config.py
 import os
 import logging
 from dotenv import load_dotenv
@@ -9,6 +10,8 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 ETHERSCAN_API_KEY = os.getenv('ETHERSCAN_API_KEY')
 TRON_API_KEY = os.getenv('TRON_API_KEY')
+# Добавьте BSCSCAN_API_KEY если будете использовать
+# BSCSCAN_API_KEY = os.getenv('BSCSCAN_API_KEY', '')
 
 if not TELEGRAM_TOKEN:
     raise ValueError("❌ TELEGRAM_TOKEN не найден в .env")
@@ -51,7 +54,7 @@ EXPLORERS = {
     #10: "https://optimistic.etherscan.io/tx/{}",
     8453: "https://basescan.org/tx/{}",
     137: "https://polygonscan.com/tx/{}",
-    56: "https://bscscan.com/tx/{}",
+    56: "https://bscscan.com/tx/{}",  # BSCScan explorer
     #43114: "https://snowtrace.io/tx/{}",
     33139: "https://apescan.io/tx/{}",
     59144: "https://lineascan.build/tx/{}",
@@ -68,8 +71,23 @@ TRC20_SYMBOLS = {
     'TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8': 'USDC'
 }
 
+# Конфигурация BSC RPC (опционально, можно вынести в .env)
+BSC_RPC_SETTINGS = {
+    'max_retries': 5,
+    'timeout': 30,
+    'max_blocks_to_scan': 10000,  # Максимальное количество блоков для сканирования
+    'direct_block_parse_limit': 500,  # Прямой парсинг блоков до N блоков
+}
+
 # Налаштування логування
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log', encoding='utf-8')
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Стани для ConversationHandler

@@ -315,7 +315,7 @@ async def today_wallet_choice(update: Update, context: CallbackContext):
                 amount_hex = data_hex[72:136]
                 amount = int(amount_hex, 16)
 
-                if (ts_start <= ts <= ts_end and
+                if (ts_start <= ts_ms <= ts_end and
                         amount > 0):
                     amount_token = amount / 1e6
                     sender_address = value.get('owner_address', '')
@@ -476,7 +476,7 @@ async def process_today_incomes_job(context):
                         logger.info(f"Обработка BNB Chain через RPC для {wallet_address}")
 
                         try:
-                            # Получаем BSC RPC клиент из context
+                            # ИСПРАВЛЕНИЕ: Получаем BSC RPC клиент из context
                             bsc_rpc = context.bot_data.get('bsc_rpc')
                             if not bsc_rpc:
                                 bsc_rpc = BscRPC()
