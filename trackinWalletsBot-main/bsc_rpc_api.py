@@ -94,6 +94,8 @@ class BscRPC:
     def _connect(self):
         """Подключается к доступному RPC узлу"""
         max_retries = 5
+        successful_connection = False
+
         for attempt in range(max_retries):
             for i in range(len(self.RPC_ENDPOINTS)):
                 endpoint = self.RPC_ENDPOINTS[(self.current_endpoint + i) % len(self.RPC_ENDPOINTS)]
@@ -104,32 +106,43 @@ class BscRPC:
                         endpoint,
                         request_kwargs={
                             'timeout': 30,
-                            'proxies': {'https': '', 'http': ''}  # Отключаем прокси если есть
+                            'proxies': {'https': '', 'http': ''}
                         }
                     ))
 
-                    # Проверяем подключение
+                    # ПРОЩЕ ПРОВЕРКА: просто проверяем подключение
                     if self.web3.is_connected():
-                        # Тестовый запрос для проверки работы
-                        block_number = self.web3.eth.get_block_number()
-                        block = self.web3.eth.get_block('latest')
-
-                        if block and block.number:
-                            logger.info(f"✅ Подключено к BSC RPC: {endpoint} (блок #{block.number})")
-                            self.current_endpoint = (self.current_endpoint + i) % len(self.RPC_ENDPOINTS)
-                            return True
+                        # Получаем номер блока для подтверждения
+                        try:
+                            block_number = self.web3.eth.get_block_number()
+                            if block_number and block_number > 0:
+                                logger.info(f"✅ Подключено к BSC RPC: {endpoint} (блок #{block_number})")
+                                self.current_endpoint = (self.current_endpoint + i) % len(self.RPC_ENDPOINTS)
+                                successful_connection = True
+                                break
+                        except Exception as e:
+                            logger.warning(f"Получение блока не удалось для {endpoint}: {e}")
+                            # Продолжаем пробовать другие endpoints
 
                 except Exception as e:
                     logger.warning(f"Не удалось подключиться к {endpoint}: {e}")
                     continue
 
+            if successful_connection:
+                break
+
             # Если не удалось подключиться ни к одному endpoint, ждем перед повторной попыткой
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Экспоненциальная задержка
+                wait_time = 2 ** attempt
                 logger.warning(f"Все RPC не отвечают, ждем {wait_time} сек...")
                 time.sleep(wait_time)
 
-        raise BscRPCError("Не удалось подключиться ни к одному RPC узлу BSC")
+        if not successful_connection:
+            logger.error("Не удалось подключиться ни к одному RPC узлу BSC")
+            # Вместо падения, создаем пустой Web3 объект
+            self.web3 = Web3()
+            self.web3.connected = False
+            raise BscRPCError("Не удалось подключиться ни к одному RPC узлу BSC")
 
     @retry(
         stop=stop_after_attempt(5),

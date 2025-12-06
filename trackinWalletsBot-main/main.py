@@ -13,7 +13,7 @@ from config import logger, TELEGRAM_TOKEN
 from db_manager import DatabaseManager
 from etherscan_api import EtherscanAPI
 from trongrid_api import TronGridAPI
-from bsc_rpc_api import BscRPC
+from bsc_rpc_api import BscRPC, BscRPCError
 
 
 # Функція для виходу з діалогу
@@ -51,7 +51,18 @@ def main():
 
     application.bot_data['tron_api'] = TronGridAPI
     application.bot_data['tron_api_key'] = config.TRON_API_KEY
-    application.bot_data['bsc_rpc'] = BscRPC()
+
+    # ИНИЦИАЛИЗАЦИЯ BSC RPC С ОБРАБОТКОЙ ОШИБОК
+    try:
+        application.bot_data['bsc_rpc'] = BscRPC()
+        logger.info("✅ BSC RPC успешно инициализирован")
+    except BscRPCError as e:
+        logger.warning(f"⚠️ Не удалось инициализировать BSC RPC: {e}")
+        application.bot_data['bsc_rpc'] = None
+        logger.info("ℹ️ BNB Chain будет пропущен из-за проблем с RPC")
+    except Exception as e:
+        logger.error(f"❌ Непредвиденная ошибка при инициализации BSC RPC: {e}")
+        application.bot_data['bsc_rpc'] = None
 
     cancel_filter = filters.Regex('^(Назад|Отменить)$')
 
