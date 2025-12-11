@@ -23,7 +23,22 @@ if not TRON_API_KEY:
 
 # --- ANKR Premium API (для BNB Chain и других сетей) ---
 ANKR_API_KEY = os.getenv('ANKR_API_KEY', 'fa04ad2a4473ae13c6edd204561588fbde88ae1442ac0d81a3f7e92ca8013ccc')
-ANKR_ENDPOINT = f"https://rpc.ankr.com/multichain/{ANKR_API_KEY}"
+# Отдельные endpoint'ы для каждой сети
+ANKR_ENDPOINTS = {
+    'eth': f'https://rpc.ankr.com/eth/{ANKR_API_KEY}',
+    'bsc': f'https://rpc.ankr.com/bsc/{ANKR_API_KEY}',
+    'polygon': f'https://rpc.ankr.com/polygon/{ANKR_API_KEY}',
+    'arbitrum': f'https://rpc.ankr.com/arbitrum/{ANKR_API_KEY}',
+    'optimism': f'https://rpc.ankr.com/optimism/{ANKR_API_KEY}',
+    'base': f'https://rpc.ankr.com/base/{ANKR_API_KEY}',
+    'avalanche': f'https://rpc.ankr.com/avalanche/{ANKR_API_KEY}',
+    'fantom': f'https://rpc.ankr.com/fantom/{ANKR_API_KEY}',
+    'gnosis': f'https://rpc.ankr.com/gnosis/{ANKR_API_KEY}',
+    'celo': f'https://rpc.ankr.com/celo/{ANKR_API_KEY}',
+    'aurora': f'https://rpc.ankr.com/aurora/{ANKR_API_KEY}',
+    'cronos': f'https://rpc.ankr.com/cronos/{ANKR_API_KEY}',
+    'harmony': f'https://rpc.ankr.com/harmony/{ANKR_API_KEY}',
+}
 
 # --- BscScan API (опционально, как fallback) ---
 BSCSCAN_API_KEY = os.getenv('BSCSCAN_API_KEY', '')

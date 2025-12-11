@@ -11,12 +11,6 @@ class TrackerFactory:
     def create_tracker(network: str, **kwargs) -> Any:
         """
         Создает трекер для указанной сети
-
-        Args:
-            network: 'eth', 'bnb', 'tron', 'polygon', 'arbitrum', etc.
-
-        Returns:
-            Соответствующий трекер-клиент
         """
         network = network.lower()
 
@@ -30,7 +24,9 @@ class TrackerFactory:
             return EthTracker(**kwargs)
 
         elif network in ['polygon', 'arbitrum', 'optimism', 'base', 'avalanche',
-                         'fantom', 'gnosis', 'celo', 'aurora', 'cronos', 'harmony']:
+                         'fantom', 'gnosis', 'celo', 'aurora', 'cronos', 'harmony',
+                         'moonbeam', 'moonriver', 'klaytn', 'metis', 'okc',
+                         'linea', 'scroll', 'polygon_zkevm', 'zksync']:
             return EVMTracker(network, **kwargs)
 
         else:
@@ -212,11 +208,19 @@ class BnbTracker(BaseTracker):
         try:
             from ankr_api import AnkrAPI
             ankr_api_key = kwargs.get('ankr_api_key')
-            self.api = AnkrAPI(ankr_api_key) if ankr_api_key else AnkrAPI()
+            if not ankr_api_key:
+                logger.error("❌ ANKR API ключ не указан для BnbTracker")
+                raise ValueError("ANKR API ключ не указан")
+
+            self.api = AnkrAPI(ankr_api_key)
             super().__init__('bnb')
-            logger.info(f"✅ BnbTracker инициализирован (через ANKR Premium)")
+            logger.info(f"✅ BnbTracker инициализирован с ANKR API")
+
         except ImportError as e:
             logger.error(f"Не удалось импортировать AnkrAPI: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка инициализации BnbTracker: {e}")
             raise
 
     def get_transactions(self, address: str, start_time: int = None, end_time: int = None, **kwargs):
@@ -226,10 +230,10 @@ class BnbTracker(BaseTracker):
         # Получаем транзакции за период
         ankr_transactions = self.api.get_transactions_by_time_range(
             address=address,
-            chain='bsc',
+            chain='bsc',  # ANKR использует 'bsc' для BNB Chain
             start_timestamp=start_time,
             end_timestamp=end_time,
-            max_pages=3  # Для дневного отчета хватит
+            max_pages=3
         )
 
         if not ankr_transactions:
@@ -250,7 +254,14 @@ class BnbTracker(BaseTracker):
                 tx_hash = tx.get('hash', '')
                 tx_from = tx.get('from', '').lower()
                 tx_to = tx.get('to', '').lower()
-                tx_value = int(tx.get('value', '0x0'), 16) if isinstance(tx.get('value'), str) else tx.get('value', 0)
+
+                # Конвертируем значение из hex в int
+                tx_value_raw = tx.get('value', '0x0')
+                if isinstance(tx_value_raw, str) and tx_value_raw.startswith('0x'):
+                    tx_value = int(tx_value_raw, 16)
+                else:
+                    tx_value = int(tx_value_raw) if tx_value_raw else 0
+
                 tx_timestamp = tx.get('timestamp', 0)
 
                 # Проверяем, что это входящая транзакция
@@ -277,7 +288,7 @@ class BnbTracker(BaseTracker):
                     topics = log.get('topics', [])
                     if len(topics) >= 3 and topics[
                         0] == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
-                        # Transfer событие
+                        # Transfer событие ERC20/BEP20
                         to_addr = '0x' + topics[2][-40:] if len(topics[2]) >= 40 else ''
 
                         if to_addr.lower() != address.lower():
@@ -425,11 +436,15 @@ class EVMTracker(BaseTracker):
         try:
             from ankr_api import AnkrAPI
             ankr_api_key = kwargs.get('ankr_api_key')
-            self.api = AnkrAPI(ankr_api_key) if ankr_api_key else AnkrAPI()
+            if not ankr_api_key:
+                logger.error(f"❌ ANKR API ключ не указан для EVMTracker ({network})")
+                raise ValueError("ANKR API ключ не указан")
+
+            self.api = AnkrAPI(ankr_api_key)
             super().__init__(network)
 
             # Маппинг сети на ANKR chain name
-            self.chain_mapping = {
+            self.ankr_chain_names = {
                 'polygon': 'polygon',
                 'arbitrum': 'arbitrum',
                 'optimism': 'optimism',
@@ -452,10 +467,14 @@ class EVMTracker(BaseTracker):
                 'zksync': 'zksync'
             }
 
-            self.chain_name = self.chain_mapping.get(network.lower(), network.lower())
-            logger.info(f"✅ EVMTracker инициализирован для {network} -> {self.chain_name}")
+            self.ankr_chain = self.ankr_chain_names.get(network.lower(), network.lower())
+            logger.info(f"✅ EVMTracker инициализирован для {network} -> ANKR chain: {self.ankr_chain}")
+
         except ImportError as e:
             logger.error(f"Не удалось импортировать AnkrAPI: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка инициализации EVMTracker для {network}: {e}")
             raise
 
     def get_transactions(self, address: str, start_time: int = None, end_time: int = None, **kwargs):
@@ -465,7 +484,7 @@ class EVMTracker(BaseTracker):
         # Получаем транзакции через ANKR
         ankr_transactions = self.api.get_transactions_by_time_range(
             address=address,
-            chain=self.chain_name,
+            chain=self.ankr_chain,
             start_timestamp=start_time,
             end_timestamp=end_time,
             max_pages=2
@@ -492,7 +511,13 @@ class EVMTracker(BaseTracker):
                 if tx_to != address.lower():
                     continue
 
-                tx_value = int(tx.get('value', '0x0'), 16) if isinstance(tx.get('value'), str) else tx.get('value', 0)
+                # Конвертируем значение из hex в int
+                tx_value_raw = tx.get('value', '0x0')
+                if isinstance(tx_value_raw, str) and tx_value_raw.startswith('0x'):
+                    tx_value = int(tx_value_raw, 16)
+                else:
+                    tx_value = int(tx_value_raw) if tx_value_raw else 0
+
                 tx_timestamp = tx.get('timestamp', 0)
 
                 # Нативная транзакция
@@ -509,18 +534,54 @@ class EVMTracker(BaseTracker):
                         'network': self.network
                     })
 
-                # Токены (упрощенный парсинг)
-                # Можно добавить полный парсинг как в BnbTracker
+                # Токенные транзакции (опционально, можно добавить)
+                logs = tx.get('logs', [])
+                for log in logs:
+                    topics = log.get('topics', [])
+                    if len(topics) >= 3 and topics[
+                        0] == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef':
+                        # Transfer событие
+                        to_addr = '0x' + topics[2][-40:] if len(topics[2]) >= 40 else ''
+
+                        if to_addr.lower() != address.lower():
+                            continue
+
+                        data_hex = log.get('data', '0x')
+                        if data_hex.startswith('0x'):
+                            data_hex = data_hex[2:]
+
+                        amount_raw = int(data_hex, 16) if data_hex else 0
+                        if amount_raw <= 0:
+                            continue
+
+                        contract_addr = log.get('address', '').lower()
+                        token_symbol = 'UNKNOWN'  # Нужна база токенов для каждой сети
+
+                        amount = amount_raw / 1e18
+
+                        token_txs.append({
+                            'hash': tx.get('hash', ''),
+                            'from': '0x' + topics[1][-40:] if len(topics[1]) >= 40 else '',
+                            'to': to_addr,
+                            'value': amount,
+                            'value_raw': amount_raw,
+                            'contract_address': contract_addr,
+                            'token_symbol': token_symbol,
+                            'timestamp': tx_timestamp,
+                            'is_native': False,
+                            'network': self.network
+                        })
 
             except Exception as e:
                 logger.warning(f"Ошибка парсинга {self.network} транзакции: {e}")
                 continue
 
-        logger.info(f"EVMTracker[{self.network}]: найдено {len(native_txs)} транзакций")
+        logger.info(
+            f"EVMTracker[{self.network}]: найдено {len(native_txs)} нативных и {len(token_txs)} токенных транзакций")
 
         return {
             'native': native_txs,
-            'tokens': token_txs,  # Пока пусто, можно добавить парсинг
+            'tokens': token_txs,
             'network': self.network
         }
 
