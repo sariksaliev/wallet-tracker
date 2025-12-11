@@ -56,7 +56,15 @@ async def list_wallets(update: Update, context: CallbackContext):
 
     message = "📋 Ваши кошельки:\n\n"
     for i, (addr, shortname, network) in enumerate(wallets, 1):
-        message += f"{i}. `{addr[:6]}...{addr[-4:]}` ({shortname}) - {network.upper()}\n"
+        network_display = network.upper()
+        if network == 'bnb':
+            network_display = 'BNB Chain'
+        elif network == 'eth':
+            network_display = 'Ethereum'
+        elif network == 'tron':
+            network_display = 'TRON'
+
+        message += f"{i}. `{addr[:6]}...{addr[-4:]}` ({shortname}) - {network_display}\n"
 
     message += "\n📊 Отчет поступлений отправляется ежедневно в 00:00 (UTC+3)."
     await update.message.reply_text(message, reply_markup=get_main_menu(), parse_mode='Markdown')
@@ -79,7 +87,15 @@ async def today_incomes_multi_chain(update: Update, context: CallbackContext):
     message = '📊 Выберите кошелек для проверки поступлений за сегодня\n\n'
     message += 'Введите полный адрес или короткий формат одного из ваших кошельков:\n\n'
     for addr, shortname, network in wallets:
-        message += f"• `{addr[:6]}...{addr[-4:]}` ({shortname}) - {network.upper()}\n"
+        network_display = network.upper()
+        if network == 'bnb':
+            network_display = 'BNB Chain'
+        elif network == 'eth':
+            network_display = 'Ethereum'
+        elif network == 'tron':
+            network_display = 'TRON'
+
+        message += f"• `{addr[:6]}...{addr[-4:]}` ({shortname}) - {network_display}\n"
 
     await update.message.reply_text(
         message,
@@ -264,6 +280,58 @@ async def fetch_today_transactions_factory(context, wallet_address, shortname, n
                     logger.error(f"Ошибка обработки сети {chain_id} ({chain_name}): {e}")
                     continue
 
+        elif network == 'bnb':
+            # Обрабатываем BNB Chain отдельно
+            try:
+                tracker = TrackerFactory.create_tracker('bnb', **tracker_kwargs)
+                result = tracker.get_transactions(
+                    address=wallet_address,
+                    start_time=ts_start,
+                    end_time=ts_end
+                )
+
+                # Обрабатываем нативные BNB транзакции
+                for tx in result.get('native', []):
+                    if tx.get('to', '').lower() == wallet_address.lower():
+                        amount = tx.get('value', 0)
+                        token = tx.get('token', 'BNB')
+
+                        all_transactions.append({
+                            'chain_id': 56,
+                            'chain_name': 'BNB Smart Chain',
+                            'wallet': wallet_address,
+                            'amount': amount,
+                            'token': token,
+                            'sender': tx.get('from', ''),
+                            'timestamp': tx.get('timestamp', 0),
+                            'hash': tx.get('hash', '')
+                        })
+                        token_sums[token] = token_sums.get(token, 0) + amount
+
+                # Обрабатываем BEP20 транзакции
+                for tx in result.get('tokens', []):
+                    if tx.get('to', '').lower() == wallet_address.lower():
+                        amount = tx.get('value', 0)
+                        if amount <= 0.01:
+                            continue
+
+                        token = tx.get('token_symbol', 'UNKNOWN')
+
+                        all_transactions.append({
+                            'chain_id': 56,
+                            'chain_name': 'BNB Smart Chain',
+                            'wallet': wallet_address,
+                            'amount': amount,
+                            'token': token,
+                            'sender': tx.get('from', ''),
+                            'timestamp': tx.get('timestamp', 0),
+                            'hash': tx.get('hash', '')
+                        })
+                        token_sums[token] = token_sums.get(token, 0) + amount
+
+            except Exception as e:
+                logger.error(f"Ошибка обработки BNB Chain: {e}")
+
         elif network == 'tron':
             # TRON обрабатываем отдельно
             tracker = TrackerFactory.create_tracker('tron', **tracker_kwargs)
@@ -388,6 +456,58 @@ async def fetch_today_transactions_legacy(context, wallet_address, shortname, ne
             except Exception as e:
                 logger.error(f"Ошибка обработки сети {chain_id}: {e}")
                 continue
+
+    elif network == 'bnb':
+        # Для BNB Chain используем chain_id = 56
+        try:
+            api = EtherscanAPI(api_key=context.bot_data['api_key'], chain_id=56)
+
+            # Нативные BNB транзакции
+            native_txs = api.get_chain_transactions(wallet_address) or []
+            for tx in native_txs:
+                if (tx.get('to', '').lower() == wallet_address.lower() and
+                        ts_start <= int(tx.get('timeStamp', 0)) <= ts_end and
+                        int(tx.get('value', 0)) > 0):
+                    amount = int(tx['value']) / 1e18
+                    all_transactions.append({
+                        'chain_id': 56,
+                        'chain_name': 'BNB Smart Chain',
+                        'wallet': wallet_address,
+                        'amount': amount,
+                        'token': 'BNB',
+                        'sender': tx.get('from', ''),
+                        'timestamp': int(tx['timeStamp']),
+                        'hash': tx.get('hash')
+                    })
+                    token_sums['BNB'] = token_sums.get('BNB', 0) + amount
+
+            # BEP20 токенные транзакции
+            token_txs = api.get_token_transactions(wallet_address) or []
+            for tx in token_txs:
+                if (tx.get('to', '').lower() == wallet_address.lower() and
+                        ts_start <= int(tx.get('timeStamp', 0)) <= ts_end and
+                        int(tx.get('value', 0)) > 0):
+                    token_symbol = tx.get('tokenSymbol', 'UNKNOWN')
+                    decimals = int(tx.get('tokenDecimal', 18))
+                    amount = int(tx['value']) / (10 ** decimals)
+
+                    if amount <= 0.01:
+                        continue
+
+                    all_transactions.append({
+                        'chain_id': 56,
+                        'chain_name': 'BNB Smart Chain',
+                        'wallet': wallet_address,
+                        'amount': amount,
+                        'token': token_symbol,
+                        'sender': tx.get('from', ''),
+                        'timestamp': int(tx['timeStamp']),
+                        'hash': tx.get('hash')
+                    })
+                    token_sums[token_symbol] = token_sums.get(token_symbol, 0) + amount
+
+        except Exception as e:
+            logger.error(f"Ошибка обработки BNB Chain: {e}")
 
     elif network == 'tron':
         try:
@@ -570,7 +690,15 @@ async def process_today_incomes_job(context):
             # Отправляем список кошельков пользователя
             wallets_msg = f"📋 Ваши добавленные кошельки ({today_start.strftime('%Y-%m-%d')}):\n\n"
             for wallet_address, shortname, network in wallets:
-                wallets_msg += f"• `{wallet_address[:6]}...{wallet_address[-4:]}` ({shortname}) - {network.upper()}\n"
+                network_display = network.upper()
+                if network == 'bnb':
+                    network_display = 'BNB Chain'
+                elif network == 'eth':
+                    network_display = 'Ethereum'
+                elif network == 'tron':
+                    network_display = 'TRON'
+
+                wallets_msg += f"• `{wallet_address[:6]}...{wallet_address[-4:]}` ({shortname}) - {network_display}\n"
             wallets_msg += f"\n🕒 Отчет за: {datetime.now(TZ_UTC_PLUS_3).strftime('%H:%M:%S UTC+3')}"
 
             await context.bot.send_message(
@@ -647,7 +775,7 @@ async def help_command(update: Update, context: CallbackContext):
 
 1️⃣ Добавить кошелек: 
 • Нажмите "Добавить кошелек" 
-• Выберите сеть (ETH или TRON)
+• Выберите сеть (ETH, BNB или TRON)
 • Введите адрес кошелька
 • Введите название кошелька
 
@@ -689,7 +817,7 @@ def is_valid_tron_address(address: str) -> bool:
 
 async def add_wallet_start(update: Update, context: CallbackContext):
     """Начало добавления кошелька."""
-    keyboard = [['ETH', 'TRON'], ['Отменить']]
+    keyboard = [['ETH', 'BNB', 'TRON'], ['Отменить']]
     await update.message.reply_text(
         '➕ Добавление кошелька\n\n'
         'Выберите сеть:',
@@ -702,6 +830,7 @@ async def add_wallet_start(update: Update, context: CallbackContext):
 async def add_wallet_network(update: Update, context: CallbackContext):
     """Обработка выбора сети."""
     network_choice = update.message.text.strip().lower()
+
     if network_choice == 'eth':
         context.user_data['pending_network'] = 'eth'
         await update.message.reply_text(
@@ -709,6 +838,15 @@ async def add_wallet_network(update: Update, context: CallbackContext):
             reply_markup=ReplyKeyboardMarkup([['Отменить']], resize_keyboard=True, one_time_keyboard=True)
         )
         return ADD_ADDRESS
+
+    elif network_choice == 'bnb':
+        context.user_data['pending_network'] = 'bnb'
+        await update.message.reply_text(
+            '📥 Введите адрес BNB Chain кошелька (начинается с 0x):',
+            reply_markup=ReplyKeyboardMarkup([['Отменить']], resize_keyboard=True, one_time_keyboard=True)
+        )
+        return ADD_ADDRESS
+
     elif network_choice == 'tron':
         context.user_data['pending_network'] = 'tron'
         await update.message.reply_text(
@@ -718,8 +856,8 @@ async def add_wallet_network(update: Update, context: CallbackContext):
         return ADD_ADDRESS
     else:
         await update.message.reply_text(
-            '❌ Некоректный выбор сети. Выберите ETH или TRON.',
-            reply_markup=ReplyKeyboardMarkup([['ETH', 'TRON'], ['Отменить']], resize_keyboard=True,
+            '❌ Некоректный выбор сети. Выберите ETH, BNB или TRON.',
+            reply_markup=ReplyKeyboardMarkup([['ETH', 'BNB', 'TRON'], ['Отменить']], resize_keyboard=True,
                                              one_time_keyboard=True)
         )
         return ADD_NETWORK
@@ -733,10 +871,10 @@ async def add_wallet_address(update: Update, context: CallbackContext):
     network = context.user_data.get('pending_network', 'eth')
 
     # Проверка валидности адреса
-    if network == 'eth':
+    if network in ['eth', 'bnb']:
         if not Web3.is_address(wallet_address):
             await update.message.reply_text(
-                '❌ Недействительный адрес ETH!\n\n'
+                '❌ Недействительный адрес!\n\n'
                 'Адрес должен:\n'
                 '• Начинаться с `0x`\n'
                 '• Содержать 42 символа\n'
@@ -817,17 +955,33 @@ async def add_wallet_shortname(update: Update, context: CallbackContext):
     # Добавляем кошелек в базу данных
     if db.add_wallet(user_id, wallet_address, shortname, network):
         short_wallet = f"{wallet_address[:6]}...{wallet_address[-4:]}"
+        network_display = network.upper()
+        if network == 'bnb':
+            network_display = 'BNB Chain'
+        elif network == 'eth':
+            network_display = 'Ethereum'
+        elif network == 'tron':
+            network_display = 'TRON'
+
         await update.message.reply_text(
-            f'✅ Кошелек `{short_wallet}` ({shortname}) в сети {network.upper()} успешно добавлен!',
+            f'✅ Кошелек `{short_wallet}` ({shortname}) в сети {network_display} успешно добавлен!',
             reply_markup=get_main_menu(),
             parse_mode='Markdown'
         )
         context.user_data.clear()
         return ConversationHandler.END
     else:
+        network_display = network.upper()
+        if network == 'bnb':
+            network_display = 'BNB Chain'
+        elif network == 'eth':
+            network_display = 'Ethereum'
+        elif network == 'tron':
+            network_display = 'TRON'
+
         await update.message.reply_text(
             f'❌ Кошелек с адресом `{wallet_address[:6]}...{wallet_address[-4:]}` или названием `{shortname}` '
-            f'в сети {network.upper()} уже используется! Попробуйте другое название.',
+            f'в сети {network_display} уже используется! Попробуйте другое название.',
             reply_markup=ReplyKeyboardMarkup([['Отменить']], resize_keyboard=True, one_time_keyboard=True),
             parse_mode='Markdown'
         )
@@ -850,7 +1004,15 @@ async def remove_wallet_start(update: Update, context: CallbackContext):
     message = '🗑️ Удаление кошелька\n\n'
     message += 'Введите полный адрес или короткий формат одного из ваших кошельков:\n\n'
     for addr, shortname, network in wallets:
-        message += f"• `{addr[:6]}...{addr[-4:]}` ({shortname}) - {network.upper()}\n"
+        network_display = network.upper()
+        if network == 'bnb':
+            network_display = 'BNB Chain'
+        elif network == 'eth':
+            network_display = 'Ethereum'
+        elif network == 'tron':
+            network_display = 'TRON'
+
+        message += f"• `{addr[:6]}...{addr[-4:]}` ({shortname}) - {network_display}\n"
 
     await update.message.reply_text(
         message,
@@ -897,11 +1059,19 @@ async def remove_wallet_address(update: Update, context: CallbackContext):
     context.user_data['network'] = network
 
     short_addr = f"{wallet_address[:6]}...{wallet_address[-4:]}"
+    network_display = network.upper()
+    if network == 'bnb':
+        network_display = 'BNB Chain'
+    elif network == 'eth':
+        network_display = 'Ethereum'
+    elif network == 'tron':
+        network_display = 'TRON'
+
     await update.message.reply_text(
         f'⚠️ Вы уверены, что хотите удалить кошелек?\n\n'
         f'Адрес: `{short_addr}`\n'
         f'Название: `{shortname}`\n'
-        f'Сеть: {network.upper()}\n\n'
+        f'Сеть: {network_display}\n\n'
         f'Напишите `УДАЛИТЬ` для подтверждения.',
         reply_markup=ReplyKeyboardMarkup([['УДАЛИТЬ'], ['Отменить']], resize_keyboard=True, one_time_keyboard=True),
         parse_mode='Markdown'
@@ -928,6 +1098,14 @@ async def remove_wallet_confirm(update: Update, context: CallbackContext):
     db.remove_wallet(user_id, wallet_address, shortname, network)
 
     short_addr = f"{wallet_address[:6]}...{wallet_address[-4:]}"
+    network_display = network.upper()
+    if network == 'bnb':
+        network_display = 'BNB Chain'
+    elif network == 'eth':
+        network_display = 'Ethereum'
+    elif network == 'tron':
+        network_display = 'TRON'
+
     await update.message.reply_text(
         f'✅ Кошелек удален!\n\n'
         f'📍 `{short_addr}` ({shortname})\n'

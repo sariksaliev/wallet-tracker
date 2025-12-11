@@ -23,10 +23,13 @@ if not TRON_API_KEY:
 
 # --- ANKR Premium API (для BNB Chain и других сетей) ---
 ANKR_API_KEY = os.getenv('ANKR_API_KEY', 'fa04ad2a4473ae13c6edd204561588fbde88ae1442ac0d81a3f7e92ca8013ccc')
+ANKR_PREMIUM = True  # Флаг для премиум тарифа
+
 # Отдельные endpoint'ы для каждой сети
 ANKR_ENDPOINTS = {
     'eth': f'https://rpc.ankr.com/eth/{ANKR_API_KEY}',
     'bsc': f'https://rpc.ankr.com/bsc/{ANKR_API_KEY}',
+    'bnb': f'https://rpc.ankr.com/bsc/{ANKR_API_KEY}',  # Алиас для BNB
     'polygon': f'https://rpc.ankr.com/polygon/{ANKR_API_KEY}',
     'arbitrum': f'https://rpc.ankr.com/arbitrum/{ANKR_API_KEY}',
     'optimism': f'https://rpc.ankr.com/optimism/{ANKR_API_KEY}',
@@ -38,7 +41,20 @@ ANKR_ENDPOINTS = {
     'aurora': f'https://rpc.ankr.com/aurora/{ANKR_API_KEY}',
     'cronos': f'https://rpc.ankr.com/cronos/{ANKR_API_KEY}',
     'harmony': f'https://rpc.ankr.com/harmony/{ANKR_API_KEY}',
+    'moonbeam': f'https://rpc.ankr.com/moonbeam/{ANKR_API_KEY}',
+    'moonriver': f'https://rpc.ankr.com/moonriver/{ANKR_API_KEY}',
+    'klaytn': f'https://rpc.ankr.com/klaytn/{ANKR_API_KEY}',
+    'metis': f'https://rpc.ankr.com/metis/{ANKR_API_KEY}',
+    'okc': f'https://rpc.ankr.com/okc/{ANKR_API_KEY}',
+    'linea': f'https://rpc.ankr.com/linea/{ANKR_API_KEY}',
+    'scroll': f'https://rpc.ankr.com/scroll/{ANKR_API_KEY}',
+    'polygon_zkevm': f'https://rpc.ankr.com/polygon-zkevm/{ANKR_API_KEY}',
+    'zksync': f'https://rpc.ankr.com/zksync-era/{ANKR_API_KEY}',
 }
+
+# Multichain API для специальных методов ANKR
+ANKR_MULTICHAIN_URL = "https://rpc.ankr.com/multichain"
+ANKR_ARCHIVE_URL = "https://rpc.ankr.com/archive"  # Для архивных данных
 
 # --- BscScan API (опционально, как fallback) ---
 BSCSCAN_API_KEY = os.getenv('BSCSCAN_API_KEY', '')
@@ -113,6 +129,9 @@ ANKR_CHAIN_MAPPING = {
     1101: 'polygon_zkevm',  # Polygon zkEVM
     324: 'zksync',  # zkSync Era
 }
+
+# Обратное маппинг (ANKR chain name -> chain_id)
+ANKR_CHAIN_TO_ID = {v: k for k, v in ANKR_CHAIN_MAPPING.items()}
 
 # ============================================
 #  НАТИВНЫЕ ТОКЕНЫ СЕТЕЙ
@@ -211,6 +230,25 @@ BEP20_TOKENS = {
     '0x7083609fce4d1d8dc0c979aab8c869ea2c873402': 'DOT',
 }
 
+# Популярные ERC20 токены (для всех EVM сетей)
+ERC20_TOKENS = {
+    # USDT на разных сетях
+    '0xdac17f958d2ee523a2206206994597c13d831ec7': 'USDT',  # Ethereum
+    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': 'USDT',  # Polygon
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 'USDT',  # Arbitrum
+    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': 'USDT',  # Optimism
+
+    # USDC на разных сетях
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',  # Ethereum
+    '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': 'USDC',  # Polygon
+    '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': 'USDC',  # Arbitrum
+    '0x7f5c764cbc14f9669b88837ca1490cca17c31607': 'USDC',  # Optimism
+
+    # DAI
+    '0x6b175474e89094c44da98b954eedeac495271d0f': 'DAI',  # Ethereum
+    '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': 'DAI',  # Polygon
+}
+
 # ============================================
 #  НАСТРОЙКИ ПРОИЗВОДИТЕЛЬНОСТИ
 # ============================================
@@ -227,30 +265,74 @@ BSC_RPC_SETTINGS = {
 #  НАСТРОЙКИ ANKR API (PREMIUM ТАРИФ)
 # ============================================
 
-# ============================================
-#  НАСТРОЙКИ ANKR API (PREMIUM ТАРИФ)
-# ============================================
-
 ANKR_SETTINGS = {
-    'timeout': 30,           # Таймаут запроса
-    'max_retries': 3,        # Максимальное количество попыток
-    'batch_size': 50,        # Размер батча для запросов
-    'use_websocket': True,   # Использовать WebSocket для мониторинга
+    'timeout': 30,  # Таймаут запроса
+    'max_retries': 3,  # Максимальное количество попыток
+    'batch_size': 100,  # Размер батча для запросов (премиум: 100+)
+    'use_websocket': False,  # Использовать WebSocket для мониторинга
+
+    # Настройки для премиум тарифа
+    'premium': {
+        'max_page_size': 1000,  # Максимальное количество транзакций на страницу
+        'max_pages': 20,  # Максимальное количество страниц
+        'rate_limit_delay': 0.05,  # Задержка между запросами (сек)
+        'enable_archive': True,  # Включить архивные данные
+        'decode_logs': True,  # Автоматическое декодирование логов
+        'include_internal_txs': True,  # Включать внутренние транзакции
+    }
 }
+
 
 # ============================================
 #  НАСТРОЙКИ ЛОГИРОВАНИЯ
 # ============================================
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('bot.log', encoding='utf-8')
-    ]
-)
+# Создаем кастомный форматтер для более читаемых логов
+class ColoredFormatter(logging.Formatter):
+    COLORS = {
+        'DEBUG': '\033[36m',  # Cyan
+        'INFO': '\033[32m',  # Green
+        'WARNING': '\033[33m',  # Yellow
+        'ERROR': '\033[31m',  # Red
+        'CRITICAL': '\033[41m',  # Red background
+        'RESET': '\033[0m'  # Reset
+    }
+
+    def format(self, record):
+        if record.levelname in self.COLORS:
+            record.levelname = f"{self.COLORS[record.levelname]}{record.levelname}{self.COLORS['RESET']}"
+            record.msg = f"{self.COLORS[record.levelname.split('m')[1] + 'm']}{record.msg}{self.COLORS['RESET']}"
+        return super().format(record)
+
+
+# Настройка логгера
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Консольный хендлер с цветами
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = ColoredFormatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+console_handler.setFormatter(console_formatter)
+
+# Файловый хендлер
+file_handler = logging.FileHandler('bot.log', encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+file_handler.setFormatter(file_formatter)
+
+# Очистка старых хендлеров и добавление новых
+if logger.hasHandlers():
+    logger.handlers.clear()
+
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 # ============================================
 #  СОСТОЯНИЯ ДЛЯ CONVERSATION HANDLER
@@ -274,6 +356,13 @@ DATABASE_FILE = 'wallets.db'
 
 # Время отправки ежедневного отчета (UTC+3)
 DAILY_REPORT_TIME = "00:00"  # Полночь по UTC+3
+# ============================================
+#  НАСТРОЙКИ ОТЧЕТОВ
+# ============================================
+
+# Время отправки ежедневного отчета (UTC+3)
+DAILY_REPORT_TIME = "00:00"  # Полночь по UTC+3
+
 
 # Минимальная сумма для отображения (фильтр мусорных транзакций)
 MIN_AMOUNT_THRESHOLD = {
@@ -284,5 +373,99 @@ MIN_AMOUNT_THRESHOLD = {
     'ETH': 0.001,
     'TRX': 10.0,
     'MATIC': 1.0,
+    'AVAX': 0.1,
+    'FTM': 1.0,
     'default': 0.01
 }
+
+# Настройки для разных типов отчетов
+REPORT_SETTINGS = {
+    'daily': {
+        'enabled': True,
+        'time': "00:00",  # UTC+3
+        'include_tokens': True,
+        'min_amount': MIN_AMOUNT_THRESHOLD,  # ИСПРАВЛЕНО
+        'format': 'detailed'  # detailed/summary
+    },
+    'weekly': {
+        'enabled': True,
+        'day': 'monday',  # Понедельник
+        'time': "09:00",
+        'format': 'summary'
+    },
+    'monthly': {
+        'enabled': True,
+        'day': 1,  # Первое число месяца
+        'time': "10:00",
+        'format': 'summary'
+    }
+}
+
+# ============================================
+#  НАСТРОЙКИ ТРЕКЕРА
+# ============================================
+
+TRACKER_SETTINGS = {
+    'max_transactions_per_request': 1000,  # Для премиум тарифа
+    'transaction_timeout': 60,  # Таймаут для получения транзакций
+    'cache_duration': 300,  # Длительность кэша в секундах (5 минут)
+    'retry_on_failure': True,
+    'retry_delay': 2,
+    'max_retries': 3,
+}
+
+# ============================================
+#  НАСТРОЙКИ БОТА
+# ============================================
+
+BOT_SETTINGS = {
+    'admin_ids': [],  # ID администраторов бота
+    'max_wallets_per_user': 20,  # Максимальное количество кошельков на пользователя
+    'cooldown_seconds': 2,  # Задержка между командами
+    'welcome_message': True,  # Отправлять приветственное сообщение
+    'notify_on_error': True,  # Уведомлять об ошибках
+}
+
+# ============================================
+#  КЭШИРОВАНИЕ
+# ============================================
+
+CACHE_SETTINGS = {
+    'enabled': True,
+    'ttl': 300,  # Time to live в секундах (5 минут)
+    'max_size': 1000,  # Максимальное количество элементов в кэше
+}
+
+# ============================================
+#  СИСТЕМНЫЕ НАСТРОЙКИ
+# ============================================
+
+SYSTEM_SETTINGS = {
+    'debug': False,  # Режим отладки
+    'test_mode': False,  # Тестовый режим (не отправляет реальные сообщения)
+    'maintenance': False,  # Режим технического обслуживания
+}
+
+
+# Проверка обязательных переменных окружения
+def check_environment():
+    """Проверка корректности настроек окружения"""
+    required = ['TELEGRAM_TOKEN', 'ETHERSCAN_API_KEY', 'TRON_API_KEY']
+    missing = [var for var in required if not os.getenv(var)]
+
+    if missing:
+        raise ValueError(f"❌ Отсутствуют обязательные переменные окружения: {', '.join(missing)}")
+
+    # Проверка ANKR API ключа если используется премиум
+    if ANKR_PREMIUM and not ANKR_API_KEY.startswith('fa04ad2a'):
+        logger.info(f"✅ Используется премиум ANKR API ключ")
+    else:
+        logger.warning(f"⚠️ Используется бесплатный ANKR API ключ. Ограничения могут применяться.")
+
+    logger.info(f"✅ Конфигурация загружена успешно")
+    logger.info(f"   Поддерживаемые сети: {len(SUPPORTED_CHAINS)}")
+    logger.info(f"   ANKR Премиум: {'Да' if ANKR_PREMIUM else 'Нет'}")
+
+
+# Автоматическая проверка при импорте
+check_environment()
